@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rollentausch — DemoDocks</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --pink: #FF3C8C; --orange: #FF6E3C;
+  --grad: linear-gradient(135deg, #FF3C8C, #FF6E3C);
+  --ink: #1A1A1A; --muted: #999;
+  --border: rgba(255,60,140,0.12);
+  --card: rgba(255,255,255,0.95);
+  --light: #FFF8F3;
+  --red: #E24B4A; --green: #1db87a; --green-light: #d4f5e6;
+  --dark: #0f0a14;
+  --radius: 16px;
+  --font-head: 'Space Grotesk', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-body); background: var(--light); color: var(--ink); min-height: 100vh; }
+
+nav { background: white; padding: 0 20px; height: 56px; display: none; align-items: center; gap: 8px; border-bottom: 0.5px solid var(--border); position: sticky; top: 0; z-index: 100; }
+.nav-logo { display: flex; align-items: center; gap: 8px; font-family: var(--font-head); font-size: 15px; font-weight: 700; background: var(--grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-decoration: none; cursor: pointer; margin-right: 6px; }
+.nav-tag { font-size: 11px; padding: 3px 10px; border-radius: 20px; background: rgba(255,60,140,.08); color: var(--pink); border: 1px solid rgba(255,60,140,.2); font-weight: 600; font-family: var(--font-head); white-space: nowrap; }
+.nav-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.session-chip { font-family: var(--font-head); font-size: 11px; font-weight: 700; color: var(--orange); background: rgba(255,110,60,.08); border: 1px solid rgba(255,110,60,.25); border-radius: 20px; padding: 3px 10px; display: none; }
+.scenario-chip { font-family: var(--font-head); font-size: 11px; font-weight: 700; color: white; background: var(--grad); border-radius: 20px; padding: 3px 10px; display: none; }
+.leave-btn { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 1px solid rgba(255,60,140,.2); background: transparent; color: var(--muted); cursor: pointer; display: none; }
+.leave-btn:hover { color: var(--pink); border-color: var(--pink); }
+.burger-btn { background: none; border: none; cursor: pointer; display: flex; flex-direction: column; gap: 4px; padding: 4px; margin-left: 4px; }
+.burger-btn span { display: block; width: 18px; height: 2px; border-radius: 2px; background: var(--grad); }
+
+.drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 200; display: none; backdrop-filter: blur(2px); }
+.drawer-overlay.open { display: block; }
+.drawer { position: fixed; top: 0; right: -260px; width: 240px; height: 100vh; background: white; z-index: 201; transition: right .25s ease; padding: 24px 20px; display: flex; flex-direction: column; gap: 8px; border-left: 0.5px solid var(--border); }
+.drawer.open { right: 0; }
+.drawer-header { font-family: var(--font-head); font-size: 13px; font-weight: 700; background: var(--grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 0.5px solid var(--border); }
+.drawer-item { padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--ink); cursor: pointer; border: none; background: none; text-align: left; width: 100%; font-family: var(--font-body); }
+.drawer-item:hover { background: rgba(255,60,140,.06); color: var(--pink); }
+.drawer-item.active { background: var(--grad); color: white; font-weight: 600; }
+.drawer-close { margin-top: auto; padding: 10px 14px; border-radius: 10px; font-size: 13px; color: var(--muted); cursor: pointer; border: 0.5px solid var(--border); background: none; font-family: var(--font-body); text-align: center; }
+
+.doodle { position: absolute; opacity: 0.15; pointer-events: none; }
+
+#app { display: none; }
+.main { padding: 24px 20px; max-width: 660px; margin: 0 auto; }
+.view { display: none; }
+.view.active { display: block; }
+
+.card { background: var(--card); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 24px; margin-bottom: 14px; }
+.card h2 { font-family: var(--font-head); font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+.card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+/* New scenario notification */
+.scenario-notify {
+  display: none; position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+  background: var(--grad); color: white; padding: 10px 20px; border-radius: 20px;
+  font-family: var(--font-head); font-size: 13px; font-weight: 700;
+  z-index: 300; box-shadow: 0 4px 20px rgba(255,60,140,.4);
+  animation: slideDown .3s ease;
+}
+@keyframes slideDown { from{transform:translateX(-50%) translateY(-20px);opacity:0;} to{transform:translateX(-50%) translateY(0);opacity:1;} }
+
+/* Role card */
+.role-card { background: white; border-radius: 20px; border: 2px solid var(--border); margin-bottom: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(255,60,140,.1); }
+.role-card-header { background: var(--grad); padding: 20px 24px; position: relative; overflow: hidden; }
+.role-card-header-circle { position: absolute; top: -30px; right: -30px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,.1); }
+.role-card-tag { font-family: var(--font-head); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.7); margin-bottom: 8px; display: block; }
+.role-card-name { font-family: var(--font-head); font-size: 24px; font-weight: 700; color: white; margin-bottom: 2px; position: relative; z-index: 1; }
+.role-card-age { font-size: 14px; color: rgba(255,255,255,.75); position: relative; z-index: 1; }
+.role-card-body { padding: 24px; }
+.role-field { margin-bottom: 16px; }
+.role-field:last-child { margin-bottom: 0; }
+.role-field-label { font-family: var(--font-head); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; background: var(--grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; display: block; }
+.role-field-value { font-size: 15px; color: var(--ink); line-height: 1.55; }
+
+/* Scenario card */
+.scenario-card { background: var(--dark); border-radius: 20px; padding: 28px 24px; margin-bottom: 16px; position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(255,60,140,.15); }
+.scenario-glow { position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(255,60,140,.25) 0%, transparent 70%); }
+.scenario-wave { position: absolute; bottom: 0; left: 0; right: 0; opacity: .12; }
+.scenario-cat { font-family: var(--font-head); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,60,140,.7); margin-bottom: 8px; display: block; position: relative; z-index: 1; }
+.scenario-label { font-family: var(--font-head); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,60,140,.7); margin-bottom: 12px; display: block; position: relative; z-index: 1; }
+.scenario-text { font-family: var(--font-head); font-size: 18px; font-weight: 600; color: white; line-height: 1.45; position: relative; z-index: 1; }
+.scenario-hint { font-size: 13px; color: rgba(255,255,255,.35); margin-top: 12px; line-height: 1.5; position: relative; z-index: 1; }
+
+/* Waiting */
+.waiting-card { background: var(--card); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 40px 24px; text-align: center; margin-bottom: 14px; }
+.waiting-icon { font-size: 40px; margin-bottom: 14px; display: block; animation: bounce 2s ease-in-out infinite; }
+@keyframes bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);} }
+.waiting-title { font-family: var(--font-head); font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+.waiting-sub { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+/* Buttons */
+.btn-primary { width: 100%; padding: 14px; background: var(--grad); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; font-family: var(--font-head); cursor: pointer; transition: opacity .15s, transform .1s; margin-bottom: 10px; display: block; }
+.btn-primary:hover { opacity: .9; }
+.btn-primary:active { transform: scale(.98); }
+.btn-primary:disabled { background: #ddd; color: #aaa; cursor: not-allowed; transform: none; }
+.btn-secondary { width: 100%; padding: 12px; background: transparent; color: var(--pink); border: 1.5px solid rgba(255,60,140,.3); border-radius: 10px; font-size: 14px; font-weight: 600; font-family: var(--font-head); cursor: pointer; transition: all .15s; margin-bottom: 10px; display: block; }
+.btn-secondary:hover { background: rgba(255,60,140,.06); }
+.btn-secondary:disabled { opacity: .4; cursor: not-allowed; }
+
+/* PIN */
+.pin-gate { background: var(--card); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 36px 24px; text-align: center; }
+.pin-gate h3 { font-family: var(--font-head); font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.pin-gate p { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
+.pin-input { font-family: var(--font-head); font-size: 28px; font-weight: 700; letter-spacing: 10px; text-align: center; width: 170px; padding: 10px; border: 1.5px solid rgba(255,60,140,.2); border-radius: 10px; background: rgba(255,255,255,.7); color: var(--ink); outline: none; }
+.pin-input:focus { border-color: var(--pink); }
+.pin-btn { display: block; margin: 14px auto 0; padding: 10px 28px; background: var(--grad); color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; font-family: var(--font-head); cursor: pointer; }
+.pin-error { font-size: 12px; color: var(--red); margin-top: 8px; display: none; }
+
+/* Admin */
+.section-label { font-family: var(--font-head); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 22px 0 10px; }
+.stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 20px; }
+.stat { background: var(--card); border-radius: 12px; border: 0.5px solid var(--border); padding: 14px; text-align: center; }
+.stat .val { font-family: var(--font-head); font-size: 28px; font-weight: 700; background: var(--grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.stat .lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.session-box { background: var(--card); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 20px; margin-bottom: 16px; }
+.session-box h3 { font-family: var(--font-head); font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+.session-code-display { font-family: var(--font-head); font-size: 36px; font-weight: 700; background: var(--grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; letter-spacing: 8px; padding: 10px 0; border: 1.5px solid var(--border); border-radius: 10px; margin-bottom: 12px; }
+.session-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.session-btn { padding: 8px 16px; border-radius: 8px; border: none; background: var(--grad); color: white; font-size: 13px; font-weight: 700; font-family: var(--font-head); cursor: pointer; white-space: nowrap; }
+.session-btn.secondary { background: rgba(255,255,255,.7); color: var(--ink); border: 0.5px solid var(--border); }
+.session-btn.danger { background: var(--red); }
+.session-btn.purple { background: linear-gradient(135deg,#7C3AED,#A855F7); }
+.session-hint { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+
+.beamer-control-box { background: var(--dark); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.beamer-control-box h3 { font-family: var(--font-head); font-size: 15px; font-weight: 700; color: white; margin-bottom: 6px; }
+.beamer-control-box p { font-size: 13px; color: rgba(255,255,255,.4); margin-bottom: 16px; line-height: 1.5; }
+.beamer-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.beamer-btn { padding: 9px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.08); color: white; font-size: 13px; font-weight: 600; font-family: var(--font-head); cursor: pointer; transition: all .15s; white-space: nowrap; }
+.beamer-btn:hover { background: rgba(255,255,255,.15); }
+.beamer-btn.active-mode { background: var(--grad); border-color: transparent; }
+
+.scenario-admin-box { background: var(--card); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 20px; margin-bottom: 16px; }
+.scenario-admin-box h3 { font-family: var(--font-head); font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.current-scenario-preview { background: rgba(255,60,140,.06); border: 1px solid rgba(255,60,140,.2); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; font-size: 13px; color: var(--ink); line-height: 1.5; }
+.current-scenario-cat { font-family: var(--font-head); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--pink); margin-bottom: 4px; display: block; }
+
+.assignment-list { display: flex; flex-direction: column; gap: 8px; }
+.assignment-item { background: var(--card); border: 0.5px solid var(--border); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+.assignment-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--grad); display: flex; align-items: center; justify-content: center; font-family: var(--font-head); font-size: 13px; font-weight: 700; color: white; flex-shrink: 0; }
+.assignment-info { flex: 1; min-width: 0; }
+.assignment-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.assignment-role { font-size: 12px; color: var(--muted); }
+.empty-state { text-align: center; padding: 2rem; color: var(--muted); font-size: 14px; background: var(--card); border-radius: var(--radius); border: 0.5px solid var(--border); }
+
+/* ── BEAMER VIEW ── */
+.beamer-wrap { min-height: 100vh; width: 100%; background: var(--dark); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 40px; position: relative; overflow: hidden; }
+.beamer-glow1 { position: absolute; top: -80px; left: -80px; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(255,60,140,.2) 0%, transparent 70%); }
+.beamer-glow2 { position: absolute; bottom: -60px; right: -60px; width: 240px; height: 240px; border-radius: 50%; background: radial-gradient(circle, rgba(255,110,60,.15) 0%, transparent 70%); }
+.beamer-wave { position: absolute; bottom: 0; left: 0; right: 0; opacity: .15; }
+.beamer-logo { position: absolute; top: 32px; left: 40px; font-family: var(--font-head); font-size: 16px; font-weight: 700; color: rgba(255,255,255,.5); letter-spacing: .04em; }
+.beamer-content { position: relative; z-index: 1; width: 100%; max-width: 900px; }
+
+/* Beamer: idle */
+.beamer-idle { text-align: center; }
+.beamer-idle-title { font-family: var(--font-head); font-size: 48px; font-weight: 700; color: white; margin-bottom: 12px; letter-spacing: -.5px; }
+.beamer-idle-sub { font-size: 20px; color: rgba(255,255,255,.6); }
+
+/* Beamer: intro */
+.beamer-intro-title { font-family: var(--font-head); font-size: 20px; font-weight: 700; color: #FF3C8C; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 40px; text-align: center; }
+.steckbrief-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.steckbrief-card { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 20px; padding: 28px 32px; }
+.steckbrief-label { font-family: var(--font-head); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,60,140,.7); margin-bottom: 10px; display: block; }
+.steckbrief-line { height: 3px; background: rgba(255,255,255,.2); border-radius: 2px; margin-bottom: 10px; }
+.steckbrief-hint { font-size: 16px; color: rgba(255,255,255,.6); font-style: italic; }
+
+/* Beamer: meta question */
+.beamer-meta-eyebrow { font-family: var(--font-head); font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,60,140,.7); margin-bottom: 16px; }
+.beamer-meta-question { font-family: var(--font-head); font-size: 38px; font-weight: 700; color: white; line-height: 1.25; letter-spacing: -.5px; margin-bottom: 40px; }
+.beamer-scenario-box { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); border-radius: 16px; padding: 24px 28px; }
+.beamer-scenario-label { font-family: var(--font-head); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,60,140,.9); margin-bottom: 10px; display: block; }
+.beamer-scenario-text { font-size: 18px; color: rgba(255,255,255,.9); line-height: 1.55; }
+
+/* Gate */
+.gate-card { background: rgba(255,255,255,.15); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.3); border-radius: 24px; padding: 40px 32px; text-align: center; width: 100%; max-width: 360px; position: relative; z-index: 2; }
+.gate-logo { font-family: var(--font-head); font-size: 26px; font-weight: 700; color: white; margin-bottom: 4px; }
+.gate-module { font-size: 13px; color: rgba(255,255,255,.6); margin-bottom: 6px; }
+.gate-wave-line { display: block; margin: 0 auto 24px; }
+.code-label { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.8); margin-bottom: 10px; display: block; }
+.code-inputs { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; }
+.code-digit { width: 44px; height: 52px; background: rgba(255,255,255,.2); border: 1.5px solid rgba(255,255,255,.4); border-radius: 10px; font-family: var(--font-head); font-size: 24px; font-weight: 700; text-align: center; color: white; caret-color: white; outline: none; }
+.code-digit:focus { border-color: white; background: rgba(255,255,255,.3); }
+.code-digit::placeholder { color: rgba(255,255,255,.25); }
+.code-error { font-size: 12px; color: rgba(255,255,255,.9); margin-bottom: 10px; display: none; background: rgba(255,0,0,.2); border-radius: 8px; padding: 6px 12px; }
+.gate-btn { width: 100%; padding: 13px; background: white; color: var(--pink); border: none; border-radius: 10px; font-size: 15px; font-weight: 700; font-family: var(--font-head); cursor: pointer; margin-bottom: 8px; }
+.gate-divider { display: flex; align-items: center; gap: 10px; margin: 12px 0; color: rgba(255,255,255,.3); font-size: 12px; }
+.gate-divider::before, .gate-divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.15); }
+.admin-gate-btn { width: 100%; padding: 10px; background: transparent; color: rgba(255,255,255,.55); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; font-size: 13px; font-family: var(--font-body); cursor: pointer; margin-bottom: 6px; }
+.admin-gate-btn:hover { color: white; border-color: rgba(255,255,255,.5); }
+.beamer-gate-btn { width: 100%; padding: 10px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.4); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; font-size: 13px; font-family: var(--font-body); cursor: pointer; }
+.beamer-gate-btn:hover { color: white; }
+</style>
+</head>
+<body>
+
+<div class="scenario-notify" id="scenario-notify">🔄 Neues Szenario!</div>
+
+<nav id="main-nav">
+  <a class="nav-logo" href="index.html">
+    <svg width="20" height="18" viewBox="0 0 44 38" fill="none">
+      <defs><linearGradient id="nl" x1="0" y1="0" x2="44" y2="38" gradientUnits="userSpaceOnUse"><stop stop-color="#FF3C8C"/><stop offset="1" stop-color="#FF6E3C"/></linearGradient></defs>
+      <path d="M4 22 L40 22 L37 30 L7 30 Z" fill="url(#nl)"/>
+      <rect x="7" y="17" width="27" height="5" rx="1.5" fill="url(#nl)" opacity=".85"/>
+      <rect x="19" y="3" width="2.5" height="18" rx="1.25" fill="url(#nl)"/>
+      <path d="M21.5 4 L37 14 L21.5 17 Z" fill="url(#nl)" opacity=".5"/>
+      <path d="M1 33 Q7 30 13 33 Q19 36 25 33 Q31 30 37 33 Q40 34.5 43 33" stroke="url(#nl)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+    </svg>
+    DemoDocks
+  </a>
+  <span class="nav-tag">Rollentausch</span>
+  <div class="nav-right">
+    <span class="session-chip" id="nav-session"></span>
+    <span class="scenario-chip" id="nav-scenario-chip"></span>
+    <button class="leave-btn" id="leave-btn" onclick="leaveSession()">✕ Verlassen</button>
+    <button class="burger-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-header">Rollentausch</div>
+  <button class="drawer-item active" onclick="setView('role');closeDrawer()" id="d-role">Meine Rolle</button>
+  <button class="drawer-item" onclick="setView('admin');closeDrawer()" id="d-admin">Admin</button>
+  <button class="drawer-close" onclick="closeDrawer()">Schließen</button>
+</div>
+
+<!-- GATE -->
+<div id="gate-wrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#FF3C8C,#FF6E3C);position:relative;overflow:hidden;">
+  <div style="position:absolute;top:-80px;right:-80px;width:280px;height:280px;border-radius:50%;background:rgba(255,255,255,.07);"></div>
+  <div style="position:absolute;bottom:60px;left:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.05);"></div>
+  <svg class="doodle" style="top:32px;left:28px;width:52px;" viewBox="0 0 50 50" fill="none"><circle cx="25" cy="25" r="20" stroke="white" stroke-width="2" fill="none"/><circle cx="25" cy="25" r="5" stroke="white" stroke-width="2" fill="none"/><line x1="25" y1="5" x2="25" y2="20" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="25" y1="30" x2="25" y2="45" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="5" y1="25" x2="20" y2="25" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="30" y1="25" x2="45" y2="25" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="10" y1="10" x2="21" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="29" y1="29" x2="40" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="40" y1="10" x2="29" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="21" y1="29" x2="10" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
+  <svg class="doodle" style="top:28px;right:32px;width:52px;" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="white" stroke-width="2" fill="none"/><circle cx="24" cy="24" r="10" stroke="white" stroke-width="2" fill="none"/><path d="M17 8 Q24 14 17 20" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M31 8 Q24 14 31 20" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M17 28 Q24 34 17 40" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M31 28 Q24 34 31 40" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  <svg class="doodle" style="bottom:88px;left:22px;width:46px;" viewBox="0 0 48 48" fill="none"><path d="M24 4 L27 18 L40 12 L30 22 L44 24 L30 26 L40 36 L27 30 L24 44 L21 30 L8 36 L18 26 L4 24 L18 22 L8 12 L21 18Z" stroke="white" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
+  <svg class="doodle" style="bottom:92px;right:24px;width:60px;" viewBox="0 0 64 36" fill="none"><path d="M2 8 Q10 2 18 8 Q26 14 34 8 Q42 2 52 8 Q58 11 62 8" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M2 20 Q10 14 18 20 Q26 26 34 20 Q42 14 52 20 Q58 23 62 20" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M2 32 Q10 26 18 32 Q26 38 34 32 Q42 26 52 32 Q58 35 62 32" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+  <svg style="position:absolute;bottom:-2px;left:0;right:0;width:100%;display:block;height:80px;" viewBox="0 0 1440 80" fill="none" preserveAspectRatio="none"><path d="M0 40 Q180 10 360 40 Q540 70 720 40 Q900 10 1080 40 Q1260 70 1440 40 L1440 80 L0 80Z" fill="rgba(255,255,255,0.1)"/><path d="M0 55 Q180 25 360 55 Q540 80 720 55 Q900 25 1080 55 Q1260 80 1440 55 L1440 80 L0 80Z" fill="rgba(255,255,255,0.07)"/></svg>
+
+  <div class="gate-card">
+    <div class="gate-logo">DemoDocks</div>
+    <div class="gate-module">Rollentausch</div>
+    <svg class="gate-wave-line" width="80" height="10" viewBox="0 0 80 10" fill="none"><path d="M0 5 Q10 0 20 5 Q30 10 40 5 Q50 0 60 5 Q70 10 80 5" stroke="rgba(255,255,255,0.45)" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+    <span class="code-label">Sitzungscode eingeben</span>
+    <div class="code-inputs">
+      <input class="code-digit" type="tel" maxlength="1" placeholder="·" id="d0" oninput="digitInput(this,1)" onkeydown="digitKey(event,this,null)"/>
+      <input class="code-digit" type="tel" maxlength="1" placeholder="·" id="d1" oninput="digitInput(this,2)" onkeydown="digitKey(event,this,0)"/>
+      <input class="code-digit" type="tel" maxlength="1" placeholder="·" id="d2" oninput="digitInput(this,3)" onkeydown="digitKey(event,this,1)"/>
+      <input class="code-digit" type="tel" maxlength="1" placeholder="·" id="d3" oninput="digitInput(this,null)" onkeydown="digitKey(event,this,2)"/>
+    </div>
+    <div class="code-error" id="code-error">Code nicht gefunden!</div>
+    <button class="gate-btn" onclick="enterCode()">Eintreten →</button>
+    <div class="gate-divider">oder</div>
+    <button class="admin-gate-btn" onclick="goAdmin()">Admin →</button>
+    <button class="beamer-gate-btn" onclick="goBeamer()">📽 Beamer-Ansicht</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="main">
+
+    <!-- ROLLE -->
+    <div id="view-role" class="view active">
+      <div id="state-empty">
+        <div class="waiting-card">
+          <span class="waiting-icon">🎭</span>
+          <div class="waiting-title">Bereit für deine Rolle?</div>
+          <div class="waiting-sub">Klick auf den Button um eine zufällige Rolle zu ziehen.</div>
+        </div>
+        <button class="btn-primary" onclick="drawNewRole()">🎲 Rolle ziehen</button>
+      </div>
+      <div id="state-has-role" style="display:none;">
+        <div id="role-card-container"></div>
+        <div id="scenario-container"></div>
+        <button class="btn-secondary" id="new-role-btn" onclick="drawNewRole()">🎲 Neue Rolle ziehen</button>
+      </div>
+    </div>
+
+    <!-- ADMIN -->
+    <div id="view-admin" class="view">
+      <div id="pin-gate-wrap">
+        <div class="pin-gate">
+          <h3>Admin</h3><p>PIN eingeben</p>
+          <input type="password" class="pin-input" id="pin-input" maxlength="4" placeholder="····" onkeyup="if(event.key==='Enter')checkPin()"/>
+          <div class="pin-error" id="pin-error">Falsche PIN!</div>
+          <button class="pin-btn" onclick="checkPin()">Einloggen</button>
+        </div>
+      </div>
+      <div id="admin-content" style="display:none;">
+
+        <div class="session-box">
+          <h3>Aktive Sitzung</h3>
+          <div class="session-code-display" id="admin-session-display">—</div>
+          <div class="session-actions">
+            <button class="session-btn" onclick="createSession()">+ Neue Sitzung</button>
+            <button class="session-btn secondary" onclick="copyCode()">Code kopieren</button>
+            <button class="session-btn danger" onclick="clearSession()">Sitzung leeren</button>
+            <button class="session-btn purple" onclick="openBeamerTab()">📽 Beamer öffnen</button>
+          </div>
+          <div class="session-hint" id="session-hint">Erstelle eine Sitzung und teile den Code.</div>
+        </div>
+
+        <!-- Szenario -->
+        <div class="scenario-admin-box">
+          <h3>Szenario für alle</h3>
+          <div id="current-scenario-preview" class="current-scenario-preview" style="display:none;"></div>
+          <button class="btn-primary" id="set-scenario-btn" onclick="setScenarioForAll()" style="margin-bottom:8px;">🎯 Szenario setzen</button>
+          <button class="btn-secondary" id="change-scenario-btn" onclick="changeScenario()" style="display:none;margin-bottom:0;">🔄 Neues Szenario (andere Kategorie)</button>
+        </div>
+
+        <!-- Beamer Control -->
+        <div class="beamer-control-box">
+          <h3>📽 Beamer-Steuerung</h3>
+          <p>Steuere was auf dem Beamer-Gerät angezeigt wird. Öffne die Beameransicht zuerst über den Button oben.</p>
+          <div class="beamer-btns">
+            <button class="beamer-btn" id="beamer-btn-idle" onclick="setBeamerMode('idle')">⬜ Leer</button>
+            <button class="beamer-btn" id="beamer-btn-intro" onclick="setBeamerMode('intro')">👋 Vorstellungsrunde</button>
+            <button class="beamer-btn" id="beamer-btn-meta" onclick="setBeamerMode('meta')">💬 Meta-Fragen</button>
+          </div>
+          <div id="meta-next-wrap" style="margin-top:10px;display:none;">
+            <button class="beamer-btn" onclick="nextMetaQuestion()" style="background:var(--grad);border-color:transparent;">Nächste Meta-Frage →</button>
+          </div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat"><div class="val" id="stat-tn">0</div><div class="lbl">Teilnehmende</div></div>
+          <div class="stat"><div class="val" id="stat-roles">0</div><div class="lbl">Rollen</div></div>
+          <div class="stat"><div class="val" id="stat-scenarios">—</div><div class="lbl">Szenario</div></div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button class="session-btn secondary" onclick="renderAdmin()" style="font-size:12px;padding:6px 12px;">↻ Aktualisieren</button>
+        </div>
+
+        <div class="section-label">Zugewiesene Rollen</div>
+        <div id="assignment-list" class="assignment-list"><div class="empty-state">Noch keine Teilnehmenden.</div></div>
+      </div>
+    </div>
+
+    <!-- BEAMER -->
+    <div id="view-beamer" class="view" style="position:fixed;inset:0;z-index:500;overflow:auto;">
+      <div class="beamer-wrap">
+        <div class="beamer-glow1"></div>
+        <div class="beamer-glow2"></div>
+        <svg class="beamer-wave" viewBox="0 0 1440 80" fill="none" preserveAspectRatio="none" style="height:80px;"><path d="M0 40 Q180 10 360 40 Q540 70 720 40 Q900 10 1080 40 Q1260 70 1440 40 L1440 80 L0 80Z" fill="url(#bw)"/><defs><linearGradient id="bw" x1="0" y1="0" x2="1440" y2="0"><stop stop-color="#FF3C8C"/><stop offset="1" stop-color="#FF6E3C"/></linearGradient></defs></svg>
+        <div class="beamer-logo">DemoDocks · Rollentausch</div>
+        <div class="beamer-content" id="beamer-content">
+          <!-- rendered by JS -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://rtopqfhsmklcdcdzhpcx.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_nBVtp5Ax0IuJB9EQZ0_hqw__QYJl-Z1';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const ADMIN_PIN = '5657';
+
+const ROLES = [
+  { id: 1,  name: 'Jugendliche*r', age: 16, umfeld: 'Geht zur Schule und hat einen Nebenjob. Kein Auto, kein eigenes Einkommen.', beruf: 'Schüler*in mit Nebenjob.', engagement: 'Möchte im Verein mithelfen und mitgestalten. Terminplanung ist schwierig durch die Schule.' },
+  { id: 2,  name: 'Student*in', age: 22, umfeld: 'Wenig Geld und Zeit, digital affin, häufiger Wohnortwechsel.', beruf: 'Studium.', engagement: 'Möchte im sozialen Bereich Neues ausprobieren, z. B. digitale Projekte. Verfügbarkeit ist befristet.' },
+  { id: 3,  name: 'Junges Elternteil', age: 30, umfeld: 'Hat ein Kleinkind, ist teilzeit berufstätig. Abende oft nicht verfügbar.', beruf: 'Teilzeit berufstätig.', engagement: 'Möchte sich lokal engagieren, tagsüber oder am Wochenende. Hat sich als junger Erwachsener in einem Sportverein engagiert.' },
+  { id: 4,  name: 'Berufstätige*r', age: 45, umfeld: 'Viel Verantwortung im Job, kaum planbare Freizeit.', beruf: 'Vollzeit berufstätig mit hoher Verantwortung.', engagement: 'Möchte punktuell und projektbezogen helfen, nicht in Dauerverantwortung. Befürchtet, dass starre Vereinsstrukturen nicht zur Lebensrealität passen.' },
+  { id: 5,  name: 'Frührentner*in', age: 63, umfeld: 'Körperlich fit, zeitlich flexibel, sozial aktiv.', beruf: 'Im Ruhestand.', engagement: 'Engagiert, möchte Verantwortung übernehmen. Fühlt sich zu jung für die Alten, zu alt für die Jungen.' },
+  { id: 6,  name: 'Rentner*in', age: 75, umfeld: 'Viel Erfahrung, eingeschränkte Mobilität, wenig Erfahrung mit digitalen Kommunikationsformen.', beruf: 'Im Ruhestand.', engagement: 'Langjährig aktiv, möchte weiter gehört werden. Hat Sorge, nicht mehr mitzukommen.' },
+  { id: 7,  name: 'Rüstige*r Rentner*in', age: 82, umfeld: 'Lebt allein, eingeschränkte Mobilität, auf Unterstützung angewiesen.', beruf: 'Im Ruhestand.', engagement: 'Möchte noch teilhaben, z. B. als Gesprächspartner*in oder Zeitzeuge. Hat Sorge, dass Angebote kaum barrierefrei und Veranstaltungsorte nicht erreichbar sind.' },
+  { id: 8,  name: 'Jugendliche*r mit Behinderung', age: 17, umfeld: 'Schüler*in mit einer Sehbeeinträchtigung. Wohnt in einer größeren Stadt.', beruf: 'Schüler*in.', engagement: 'Möchte sich aktiv einbringen, hat konkrete Ideen und viel Energie.' },
+  { id: 9,  name: 'Pflegendes Familienmitglied', age: 50, umfeld: 'Pflegt ein Elternteil zuhause. Kaum planbare Freizeit, hohe emotionale Last.', beruf: 'Berufstätig neben der Pflege.', engagement: 'Möchte sich engagieren, braucht maximale Flexibilität. Hat Sorge, Termine oft kurzfristig nicht einhalten zu können.' },
+  { id: 10, name: 'Neuzugezogene*r auf dem Land', age: 35, umfeld: 'Vor kurzem zugezogen, kennt niemanden. ÖPNV kaum vorhanden.', beruf: 'Berufstätig.', engagement: 'Sucht Anschluss und Gemeinschaft über den Verein. Fühlt sich als Außenstehende*r.' },
+  { id: 11, name: 'Engagierte*r mit Migrationsgeschichte', age: 40, umfeld: 'Lebt seit vielen Jahren in Deutschland, spricht Deutsch mit Akzent, ist gut vernetzt.', beruf: 'Berufstätig.', engagement: 'Seit Jahren aktiv, bringt viel Erfahrung ein. Möchte gerne eine leitende Rolle einnehmen. Ist immer wieder mit rassistischen Zuschreibungen und Exklusion konfrontiert.' },
+  { id: 12, name: 'Rentner*in in Altersarmut', age: 70, umfeld: 'Lebt von der Grundrente, kann Vereinsbeiträge und Auslagen kaum stemmen.', beruf: 'Im Ruhestand.', engagement: 'Möchte sich einbringen, hat Zeit und Erfahrung. Ist beschämt und möchte nicht, dass die finanzielle Situation zum Thema gemacht wird.' },
+  { id: 13, name: 'Alleinerziehender Elternteil', age: 38, umfeld: 'Alleinerziehend, zwei Kinder, vollzeit berufstätig.', beruf: 'Vollzeit berufstätig.', engagement: 'Möchte sich im Verein engagieren, auch als Vorbild für die Kinder. Macht sich Gedanken über die Vereinbarkeit von Familie und Ehrenamt.' },
+  { id: 14, name: 'Ehrenamtliche*r mit seelischer Behinderung', age: 48, umfeld: 'Lebt mit Depressionen, die nach außen unsichtbar sind.', beruf: 'Berufstätig.', engagement: 'Möchte sich engagieren, hat aber Angst vor dem Stigma der Unzuverlässigkeit. An guten Tagen voll da, an schlechten Tagen nicht — wird oft falsch eingeschätzt.' },
+  { id: 15, name: 'Ehrenamtliche*r, LSBTIQ+', age: 25, umfeld: 'Homosexuell, seit Jahren in einem ländlichen Verein aktiv, nach außen gut integriert.', beruf: 'Berufstätig.', engagement: 'Engagiert, zuverlässig, übernimmt gerne Aufgaben. Erlebt homofeindliche Kommentare und traut sich nicht offen zu leben.' },
+];
+
+const SCENARIOS = [
+  { id: 1,  cat: 'Zeitliche Hürden', text: 'Die Mitgliederversammlung findet um 19:30 Uhr in einem am Stadtrand gelegenen Bürgerhaus statt. Wie wirkt sich das auf deine Beteiligung aus?' },
+  { id: 2,  cat: 'Zeitliche Hürden', text: 'Alle wichtigen Absprachen laufen über einen WhatsApp-Gruppenchat. Was bedeutet das für deine Teilhabe?' },
+  { id: 3,  cat: 'Zeitliche Hürden', text: 'Die Gruppentreffen finden ausschließlich abends statt. Welche Botschaft sendet das an potenzielle Engagierte?' },
+  { id: 4,  cat: 'Soziale Hürden', text: 'Eine Person mit einer neuen Idee bringt diese in die Vorstandssitzung ein. Die Reaktion ist freundlich, aber abwiegelnd: „Das haben wir schon mal probiert — hat nicht funktioniert." Eine inhaltliche Auseinandersetzung bleibt aus. Was macht das mit deiner Motivation, dich weiter zu engagieren?' },
+  { id: 5,  cat: 'Soziale Hürden', text: 'Du engagierst dich schon sehr lange in deinem Verein und erlebst jetzt, dass dein Wissen kaum noch gefragt wird. Entscheidungen werden ohne deine Einbindung getroffen. Welche Signale sendet das — und was sind mögliche Folgen?' },
+  { id: 6,  cat: 'Soziale Hürden', text: 'Es hat sich eine neue Gruppe innerhalb der bestehenden Gruppe gebildet, die stark von einer bestimmten Altersgruppe dominiert wird. Andere Mitglieder fragen sich, ob sie dazu passen. Welche Dynamiken entstehen dadurch?' },
+  { id: 7,  cat: 'Materielle & digitale Hürden', text: 'Vereinsinformationen werden ausschließlich per Newsletter und App verteilt. Wirst du dadurch systematisch ausgeschlossen?' },
+  { id: 8,  cat: 'Materielle & digitale Hürden', text: 'Der Zugang zu Vereinsräumen außerhalb der offiziellen Zeiten ist an eine Schlüsselverantwortung geknüpft, die nur volljährigen Mitgliedern übertragen wird. Welche Auswirkungen hat das auf das Selbstwirksamkeitserleben jüngerer Engagierter — und was könntest du tun?' },
+  { id: 9,  cat: 'Strukturelle Hürden', text: 'Im Vorstand sind ausschließlich Personen im Alter 50+ vertreten. Wie gehst du damit um? Würdest du für ein Vorstandsamt kandidieren?' },
+  { id: 10, cat: 'Strukturelle Hürden', text: 'Ein Gründungsmitglied mit langjährigem Engagement erlebt, dass sein früherer Einsatz im Vereinsalltag kaum noch Erwähnung findet. Wie kannst du in deiner Rolle damit umgehen, wenn du das beobachtest? Warum ist es wichtig, eine solche Situation nicht zu ignorieren?' },
+  { id: 11, cat: 'Lebensrealitäten', text: 'Ihr trefft euch immer zur gleichen Zeit an einem bestimmten Nachmittag in der Woche und besprecht dort alle wichtigen Belange zur Planung eures Engagements. Kannst du an diesen Treffen teilnehmen? Wenn nicht — was macht das mit deiner Motivation, dich hier weiter zu engagieren?' },
+];
+
+const META_QUESTIONS = [
+  'Wann wird Alter zur Ressource und wann zum Ausschlussmechanismus?',
+  'Welche Rolle spielen Machtstrukturen, traditionelle Hierarchien und unausgesprochene Erwartungen?',
+  'Wie können Verbände generationenübergreifende Zusammenarbeit diskriminierungssensibel gestalten?',
+];
+
+let currentSession = null;
+let participantId = null;
+let adminUnlocked = false;
+let currentRole = null;
+let currentScenario = null;
+let lastScenarioCat = null;
+let pollTimer = null;
+let beamerPollTimer = null;
+let currentMetaIdx = 0;
+
+function getParticipantId() {
+  let id = sessionStorage.getItem('rt_pid');
+  if (!id) { id = 'p_' + Date.now() + '_' + Math.random().toString(36).substr(2,6); sessionStorage.setItem('rt_pid', id); }
+  return id;
+}
+
+// ── Drawer ──
+function openDrawer()  { document.getElementById('drawer').classList.add('open'); document.getElementById('drawer-overlay').classList.add('open'); }
+function closeDrawer() { document.getElementById('drawer').classList.remove('open'); document.getElementById('drawer-overlay').classList.remove('open'); }
+
+// ── Gate ──
+function showApp() {
+  document.getElementById('gate-wrap').style.display = 'none';
+  document.getElementById('main-nav').style.display = 'flex';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('nav-session').textContent = 'Sitzung ' + currentSession;
+  document.getElementById('nav-session').style.display = 'inline-block';
+  document.getElementById('leave-btn').style.display = 'inline-block';
+}
+function showGate() {
+  document.getElementById('gate-wrap').style.display = 'flex';
+  document.getElementById('main-nav').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+  ['d0','d1','d2','d3'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('code-error').style.display = 'none';
+  currentRole = null; currentScenario = null;
+  stopPolling(); stopBeamerPolling();
+}
+function leaveSession() { currentSession = null; sessionStorage.removeItem('rt_session'); showGate(); }
+
+function digitInput(el, nextIdx) {
+  el.value = el.value.replace(/[^0-9]/g,'');
+  if (el.value.length === 1 && nextIdx !== null) document.getElementById('d'+nextIdx).focus();
+  if (nextIdx === null && el.value.length === 1) enterCode();
+}
+function digitKey(e, el, prevIdx) {
+  if (e.key === 'Backspace' && el.value === '' && prevIdx !== null) document.getElementById('d'+prevIdx).focus();
+}
+
+async function enterCode() {
+  const code = ['d0','d1','d2','d3'].map(id => document.getElementById(id).value).join('');
+  if (code.length !== 4) return;
+  const { data } = await sb.from('rt_sessions').select('*').eq('code', code).limit(1);
+  if (data && data.length > 0) {
+    currentSession = code;
+    participantId = getParticipantId();
+    sessionStorage.setItem('rt_session', code);
+    showApp();
+    setView('role');
+    await loadMyAssignment();
+    startPolling();
+  } else {
+    document.getElementById('code-error').style.display = 'block';
+  }
+}
+
+function goAdmin() {
+  currentSession = 'admin';
+  document.getElementById('gate-wrap').style.display = 'none';
+  document.getElementById('main-nav').style.display = 'flex';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('nav-session').style.display = 'none';
+  document.getElementById('leave-btn').style.display = 'none';
+  setView('admin');
+}
+
+function goBeamer() {
+  currentSession = 'beamer';
+  document.getElementById('gate-wrap').style.display = 'none';
+  document.getElementById('main-nav').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  setView('beamer');
+  renderBeamer('idle', null, null);
+  startBeamerPolling();
+}
+
+function openBeamerTab() {
+  window.open(window.location.href + '?beamer=1', '_blank');
+}
+
+// ── Role drawing ──
+async function loadMyAssignment() {
+  if (!currentSession || currentSession === 'admin') return;
+  const { data } = await sb.from('rt_assignments').select('*').eq('session_code', currentSession).eq('participant_id', participantId).limit(1);
+  if (data && data.length > 0) {
+    currentRole = ROLES.find(r => r.id === data[0].role_id) || null;
+  }
+  // Load current scenario for session
+  const { data: sess } = await sb.from('rt_sessions').select('scenario_id').eq('code', currentSession).limit(1);
+  if (sess && sess[0]?.scenario_id) {
+    const newScenario = SCENARIOS.find(s => s.id === sess[0].scenario_id) || null;
+    currentScenario = newScenario;
+  }
+  updateRoleView();
+}
+
+async function drawNewRole() {
+  if (!currentSession) return;
+  const { data: existing } = await sb.from('rt_assignments').select('role_id, participant_id').eq('session_code', currentSession);
+  const usedByOthers = (existing || []).filter(a => a.participant_id !== participantId).map(a => a.role_id);
+  const available = ROLES.filter(r => !usedByOthers.includes(r.id));
+  if (!available.length) {
+    alert('Alle Rollen sind bereits vergeben! Es können keine weiteren Rollen gezogen werden.');
+    return;
+  }
+  const role = available[Math.floor(Math.random() * available.length)];
+  currentRole = role;
+  await sb.from('rt_assignments').upsert([{
+    session_code: currentSession, participant_id: participantId, role_id: role.id, question_id: null
+  }], { onConflict: 'session_code,participant_id', ignoreDuplicates: false });
+  updateRoleView();
+}
+
+function updateRoleView() {
+  const empty = document.getElementById('state-empty');
+  const hasRole = document.getElementById('state-has-role');
+  const newRoleBtn = document.getElementById('new-role-btn');
+
+  if (currentRole) {
+    empty.style.display = 'none';
+    hasRole.style.display = 'block';
+    document.getElementById('role-card-container').innerHTML = renderRoleCard(currentRole);
+    document.getElementById('scenario-container').innerHTML = currentScenario ? renderScenarioCard(currentScenario) : '';
+    // Check if all roles used
+    const { } = sb.from('rt_assignments').select('role_id').eq('session_code', currentSession).then(({ data }) => {
+      const usedByOthers = (data || []).filter(a => a.participant_id !== participantId).map(a => a.role_id);
+      const available = ROLES.filter(r => !usedByOthers.includes(r.id));
+      if (newRoleBtn) newRoleBtn.disabled = available.length === 0;
+    });
+    // Update nav scenario chip
+    if (currentScenario) {
+      document.getElementById('nav-scenario-chip').textContent = 'Szenario ' + currentScenario.id;
+      document.getElementById('nav-scenario-chip').style.display = 'inline-block';
+    }
+  } else {
+    empty.style.display = 'block';
+    hasRole.style.display = 'none';
+  }
+}
+
+function renderRoleCard(role) {
+  return `<div class="role-card">
+    <div class="role-card-header">
+      <div class="role-card-header-circle"></div>
+      <span class="role-card-tag">Rollenkarte</span>
+      <div class="role-card-name">${esc(role.name)}</div>
+      <div class="role-card-age">${role.age} Jahre</div>
+    </div>
+    <div class="role-card-body">
+      <div class="role-field"><span class="role-field-label">Soziales Umfeld</span><div class="role-field-value">${esc(role.umfeld)}</div></div>
+      <div class="role-field"><span class="role-field-label">Beruf</span><div class="role-field-value">${esc(role.beruf)}</div></div>
+      <div class="role-field"><span class="role-field-label">Ehrenamtliches Engagement</span><div class="role-field-value">${esc(role.engagement)}</div></div>
+    </div>
+  </div>`;
+}
+
+function renderScenarioCard(s) {
+  return `<div class="scenario-card">
+    <div class="scenario-glow"></div>
+    <svg class="scenario-wave" viewBox="0 0 320 50" fill="none" preserveAspectRatio="none" style="height:50px;">
+      <path d="M0 25 Q40 5 80 25 Q120 45 160 25 Q200 5 240 25 Q280 45 320 25 L320 50 L0 50Z" fill="url(#sw)"/>
+      <defs><linearGradient id="sw" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#FF3C8C"/><stop offset="1" stop-color="#FF6E3C"/></linearGradient></defs>
+    </svg>
+    <span class="scenario-cat">${esc(s.cat)}</span>
+    <span class="scenario-label">Dein Szenario</span>
+    <div class="scenario-text">${esc(s.text)}</div>
+  </div>`;
+}
+
+// ── Polling for TN ──
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(async () => {
+    if (!currentSession || currentSession === 'admin' || currentSession === 'beamer') return;
+    const { data: sess } = await sb.from('rt_sessions').select('scenario_id').eq('code', currentSession).limit(1);
+    if (sess && sess[0]) {
+      const newId = sess[0].scenario_id;
+      const currentId = currentScenario ? currentScenario.id : null;
+      if (newId !== currentId) {
+        currentScenario = newId ? SCENARIOS.find(s => s.id === newId) || null : null;
+        updateRoleView();
+        if (newId) showScenarioNotification();
+      }
+    }
+  }, 5000);
+}
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+function showScenarioNotification() {
+  const el = document.getElementById('scenario-notify');
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+// ── PIN ──
+function checkPin() {
+  if (document.getElementById('pin-input').value === ADMIN_PIN) {
+    adminUnlocked = true;
+    document.getElementById('pin-gate-wrap').style.display = 'none';
+    document.getElementById('admin-content').style.display = 'block';
+    renderAdmin();
+  } else {
+    document.getElementById('pin-error').style.display = 'block';
+    document.getElementById('pin-input').value = '';
+  }
+}
+
+// ── Admin session ──
+function genCode() { return String(Math.floor(1000 + Math.random() * 9000)); }
+
+async function createSession() {
+  const code = genCode();
+  await sb.from('rt_sessions').insert([{ code, phase: 1 }]);
+  currentSession = code;
+  currentScenario = null; lastScenarioCat = null;
+  document.getElementById('admin-session-display').textContent = code;
+  document.getElementById('session-hint').textContent = 'Sitzung aktiv! Code: ' + code;
+  document.getElementById('nav-session').textContent = 'Sitzung ' + code;
+  document.getElementById('nav-session').style.display = 'inline-block';
+  document.getElementById('current-scenario-preview').style.display = 'none';
+  document.getElementById('change-scenario-btn').style.display = 'none';
+  document.getElementById('set-scenario-btn').style.display = 'block';
+  renderAdmin();
+}
+
+function copyCode() {
+  const code = document.getElementById('admin-session-display').textContent;
+  if (code === '—') return;
+  navigator.clipboard.writeText(code).then(() => {
+    document.getElementById('session-hint').textContent = '✓ Code ' + code + ' kopiert!';
+  });
+}
+
+async function clearSession() {
+  const code = document.getElementById('admin-session-display').textContent;
+  if (code === '—') return;
+  if (!confirm('Alle Daten der Sitzung ' + code + ' löschen?')) return;
+  await sb.from('rt_assignments').delete().eq('session_code', code);
+  await sb.from('rt_sessions').delete().eq('code', code);
+  currentSession = 'admin'; currentScenario = null; lastScenarioCat = null;
+  document.getElementById('admin-session-display').textContent = '—';
+  document.getElementById('session-hint').textContent = 'Erstelle eine neue Sitzung.';
+  document.getElementById('nav-session').style.display = 'none';
+  document.getElementById('current-scenario-preview').style.display = 'none';
+  document.getElementById('change-scenario-btn').style.display = 'none';
+  document.getElementById('set-scenario-btn').style.display = 'block';
+  renderAdmin();
+}
+
+// ── Scenario management ──
+function pickScenario(excludeCat) {
+  const available = excludeCat ? SCENARIOS.filter(s => s.cat !== excludeCat) : SCENARIOS;
+  const pool = available.length > 0 ? available : SCENARIOS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+async function setScenarioForAll() {
+  const code = document.getElementById('admin-session-display').textContent;
+  if (code === '—') { alert('Erstelle zuerst eine Sitzung!'); return; }
+  const scenario = pickScenario(null);
+  lastScenarioCat = scenario.cat;
+  currentScenario = scenario;
+  await sb.from('rt_sessions').update({ scenario_id: scenario.id }).eq('code', code);
+  updateAdminScenarioUI();
+}
+
+async function changeScenario() {
+  const code = document.getElementById('admin-session-display').textContent;
+  if (code === '—') return;
+  const scenario = pickScenario(lastScenarioCat);
+  lastScenarioCat = scenario.cat;
+  currentScenario = scenario;
+  await sb.from('rt_sessions').update({ scenario_id: scenario.id }).eq('code', code);
+  updateAdminScenarioUI();
+}
+
+function updateAdminScenarioUI() {
+  if (!currentScenario) return;
+  const preview = document.getElementById('current-scenario-preview');
+  preview.style.display = 'block';
+  preview.innerHTML = `<span class="current-scenario-cat">${esc(currentScenario.cat)}</span>${esc(currentScenario.text)}`;
+  document.getElementById('set-scenario-btn').style.display = 'none';
+  document.getElementById('change-scenario-btn').style.display = 'block';
+  document.getElementById('stat-scenarios').textContent = currentScenario.id;
+}
+
+// ── Beamer control ──
+async function setBeamerMode(mode) {
+  const code = document.getElementById('admin-session-display').textContent;
+  if (code === '—') { alert('Erstelle zuerst eine Sitzung!'); return; }
+  // Store mode in rt_sessions
+  const update = { beamer_mode: mode };
+  if (mode === 'meta') { update.beamer_meta_idx = 0; currentMetaIdx = 0; }
+  await sb.from('rt_sessions').update(update).eq('code', code);
+  // Update button states
+  document.querySelectorAll('.beamer-btn').forEach(b => b.classList.remove('active-mode'));
+  const activeBtn = document.getElementById('beamer-btn-' + mode);
+  if (activeBtn) activeBtn.classList.add('active-mode');
+  const metaWrap = document.getElementById('meta-next-wrap');
+  if (metaWrap) metaWrap.style.display = mode === 'meta' ? 'block' : 'none';
+}
+
+async function nextMetaQuestion() {
+  const code = document.getElementById('admin-session-display').textContent;
+  if (code === '—') return;
+  currentMetaIdx = (currentMetaIdx + 1) % META_QUESTIONS.length;
+  await sb.from('rt_sessions').update({ beamer_meta_idx: currentMetaIdx }).eq('code', code);
+}
+
+// ── Beamer polling ──
+function startBeamerPolling() {
+  stopBeamerPolling();
+  // Need to know which session to watch — get from rt_sessions latest
+  pollBeamerState();
+  beamerPollTimer = setInterval(pollBeamerState, 3000);
+}
+function stopBeamerPolling() { if (beamerPollTimer) { clearInterval(beamerPollTimer); beamerPollTimer = null; } }
+
+let lastBeamerState = null;
+
+async function pollBeamerState() {
+  // Get the most recent active session
+  const { data } = await sb.from('rt_sessions').select('*').order('created_at', { ascending: false }).limit(1);
+  if (!data || !data.length) { renderBeamer('idle', null, null); return; }
+  const sess = data[0];
+  const stateKey = JSON.stringify({ mode: sess.beamer_mode, meta: sess.beamer_meta_idx, scenario: sess.scenario_id });
+  if (stateKey === lastBeamerState) return;
+  lastBeamerState = stateKey;
+  const scenario = sess.scenario_id ? SCENARIOS.find(s => s.id === sess.scenario_id) : null;
+  renderBeamer(sess.beamer_mode || 'idle', scenario, sess.beamer_meta_idx || 0);
+}
+
+function renderBeamer(mode, scenario, metaIdx) {
+  const el = document.getElementById('beamer-content');
+  if (mode === 'idle' || !mode) {
+    el.innerHTML = `<div class="beamer-idle">
+      <div class="beamer-idle-title">Rollentausch</div>
+      <div class="beamer-idle-sub">Warte auf Admin…</div>
+    </div>`;
+  } else if (mode === 'intro') {
+    el.innerHTML = `<div>
+      <div class="beamer-intro-title">Vorstellungsrunde</div>
+      <div class="steckbrief-grid">
+        <div class="steckbrief-card">
+          <span class="steckbrief-label">Name</span>
+          <div class="steckbrief-line"></div>
+          <div class="steckbrief-hint">Wie heißt du?</div>
+        </div>
+        <div class="steckbrief-card">
+          <span class="steckbrief-label">Herkunft</span>
+          <div class="steckbrief-line"></div>
+          <div class="steckbrief-hint">Woher kommst du?</div>
+        </div>
+        <div class="steckbrief-card">
+          <span class="steckbrief-label">Projekt</span>
+          <div class="steckbrief-line"></div>
+          <div class="steckbrief-hint">Welches Projekt leitest du?</div>
+        </div>
+        <div class="steckbrief-card">
+          <span class="steckbrief-label">Träger</span>
+          <div class="steckbrief-line"></div>
+          <div class="steckbrief-hint">Von welchem Träger?</div>
+        </div>
+      </div>
+    </div>`;
+  } else if (mode === 'meta') {
+    const idx = metaIdx || 0;
+    const question = META_QUESTIONS[idx % META_QUESTIONS.length];
+    el.innerHTML = `<div>
+      <div class="beamer-meta-eyebrow">Meta-Diskussionsfrage ${idx+1} / ${META_QUESTIONS.length}</div>
+      <div class="beamer-meta-question">${esc(question)}</div>
+      ${scenario ? `<div class="beamer-scenario-box">
+        <span class="beamer-scenario-label">Aktuelles Szenario · ${esc(scenario.cat)}</span>
+        <div class="beamer-scenario-text">${esc(scenario.text)}</div>
+      </div>` : ''}
+    </div>`;
+  }
+}
+
+async function renderAdmin() {
+  if (!adminUnlocked) return;
+  const code = document.getElementById('admin-session-display').textContent;
+  if (code === '—') {
+    ['stat-tn','stat-roles'].forEach(id => document.getElementById(id).textContent = 0);
+    document.getElementById('assignment-list').innerHTML = '<div class="empty-state">Keine aktive Sitzung.</div>';
+    return;
+  }
+  const { data: assignments } = await sb.from('rt_assignments').select('*').eq('session_code', code).order('created_at',{ascending:true});
+  const list = assignments || [];
+  document.getElementById('stat-tn').textContent = list.length;
+  document.getElementById('stat-roles').textContent = list.filter(a => a.role_id).length;
+
+  const el = document.getElementById('assignment-list');
+  if (!list.length) { el.innerHTML = '<div class="empty-state">Noch keine Teilnehmenden.</div>'; return; }
+  el.innerHTML = list.map(a => {
+    const role = ROLES.find(r => r.id === a.role_id);
+    const initials = role ? role.name.split(/[\s*]+/).filter(Boolean).map(n=>n[0]).join('').substring(0,2) : '?';
+    return `<div class="assignment-item">
+      <div class="assignment-avatar">${initials}</div>
+      <div class="assignment-info">
+        <div class="assignment-name">${role ? esc(role.name) : '—'}</div>
+        <div class="assignment-role">${role ? role.age + ' Jahre' : 'Keine Rolle'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setView(v) {
+  ['role','admin','beamer'].forEach(id => {
+    document.getElementById('view-'+id).classList.toggle('active', id===v);
+    const d = document.getElementById('d-'+id);
+    if (d) d.classList.toggle('active', id===v);
+  });
+  if (v === 'admin' && adminUnlocked) renderAdmin();
+  if (v === 'beamer') { startBeamerPolling(); }
+  else stopBeamerPolling();
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Auto-open beamer view if URL has ?beamer=1
+if (new URLSearchParams(window.location.search).get('beamer') === '1') {
+  goBeamer();
+}
+</script>
+</body>
+</html>
